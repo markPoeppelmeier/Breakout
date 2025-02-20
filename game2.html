@@ -898,6 +898,8 @@ function autoPaddleLogic(){
 // Decide which axis to bounce on by smallest overlap. Also push out.
 // ----------------------------------------------------------------------------
 function collisionDetectionBall(ball) {
+  console.log(`Before Collision: Ball at (${ball.x.toFixed(2)}, ${ball.y.toFixed(2)}) dx=${ball.dx.toFixed(2)} dy=${ball.dy.toFixed(2)}`);
+
     let nearestBrick = null;
     let minOverlap = Number.MAX_VALUE;
     let collisionAxis = null; // "x" or "y"
@@ -953,9 +955,18 @@ function collisionDetectionBall(ball) {
         ball.y = ball.radius;
         ball.dy = Math.abs(ball.dy);
     }
+
 }
 
-
+function ensureBallMovement(ball) {
+    let minSpeed = 0.5;
+    if (Math.abs(ball.dx) < minSpeed) {
+        ball.dx = (ball.dx < 0 ? -1 : 1) * minSpeed;
+    }
+    if (Math.abs(ball.dy) < minSpeed) {
+        ball.dy = (ball.dy < 0 ? -1 : 1) * minSpeed;
+    }
+}
 
 // The main bounding-box overlap approach:
 function checkCollisionWithRect(ball, rx, ry, rw, rh, type, dataObj){
@@ -1042,7 +1053,6 @@ function handleBrickCollision(ball, br) {
 }
 
 
-
 // Check if we finished the level
 function checkLevelComplete(){
   if(destroyedBricks=== totalBricks){
@@ -1074,6 +1084,7 @@ function normalBounceLogic(ball,pad){
   ball.dx= speed* Math.sin(angle);
   ball.dy= -Math.abs(speed* Math.cos(angle));
 }
+
 function smartBounceLogic(ball,pad){
   let sum=0, count=0;
   bricks.forEach(br=>{
@@ -1148,6 +1159,19 @@ function collisionDetectionBullet(bullet){
   }
 }
 
+//Spawn powerups
+function spawnPowerUp(px, py) {
+  let type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+  powerUps.push({
+    x: px,
+    y: py,
+    type: type,
+    active: true,
+    width: 16,
+    height: 16,
+    speed: 2
+  });
+}
 
 // Update power-ups
 function updatePowerUps(){
