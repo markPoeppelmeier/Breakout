@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Idle-Breakout (600×400, Ensured Bricks)</title>
+  <title>Idle-Breakout (600×400, Improved Collision)</title>
   <style>
     /* Overall layout */
     body {
@@ -66,7 +66,7 @@
       border-radius: 8px;
       display: none;
       cursor: pointer;
-      z-index: 9999; /* ensure it's above the canvas */
+      z-index: 9999;
     }
 
     .bottom-ui {
@@ -131,7 +131,7 @@
       font-size: 16px;
     }
 
-    /* Between-level overlay for picking one of two ephemeral power-ups */
+    /* Between-level overlay for picking ephemeral power-ups */
     #betweenLevelOverlay {
       position: fixed;
       top: 0; left: 0;
@@ -164,7 +164,7 @@
 </head>
 <body>
 
-<h1>Idle-Breakout (600×400, Ensured Bricks)</h1>
+<h1>Idle-Breakout (Improved Collision)</h1>
 
 <div class="main-container">
   <div class="left-side">
@@ -216,7 +216,7 @@ const overlayEl = document.getElementById("betweenLevelOverlay");
 const choicesContainerEl = document.getElementById("choicesContainer");
 const clickOverlay = document.getElementById("clickOverlay");
 
-// Key press flags (fixed)
+// Key press flags
 let rightPressed = false;
 let leftPressed = false;
 
@@ -237,9 +237,10 @@ let storeDiscount = 0;
 let smartPaddlesActive = false;
 let blockValueMultiplier = 1;
 
+// Ball
 const ballRadius = 8;
 let balls = [];
-const initialBallSpeedX = 2; // speed
+const initialBallSpeedX = 2; 
 const initialBallSpeedY = -2;
 
 // Paddles
@@ -252,7 +253,7 @@ const colCount = 8;
 const brickWidth = 60;
 const brickHeight = 20;
 const brickPadding = 2;
-const totalBrickWidth = colCount * (brickWidth + brickPadding);
+const totalBrickWidth = colCount*(brickWidth + brickPadding);
 const brickOffsetLeft = (600 - totalBrickWidth)/2;
 const brickOffsetTop = 50;
 let totalBricks = 0;
@@ -304,8 +305,9 @@ const progressEl = document.getElementById("speedProgress");
 let speedMessage = "";
 let speedMessageTimer = 0;
 
+
 // ----------------------------------------------------------------------------
-// LISTENERS
+// EVENT LISTENERS
 // ----------------------------------------------------------------------------
 document.addEventListener("keydown", keyDownHandler);
 document.addEventListener("keyup", keyUpHandler);
@@ -340,7 +342,7 @@ function keyUpHandler(e){
 }
 function mouseMoveHandler(e){
   if(!waitingForClickToStart && !gamePaused){
-    let p= paddles[0];
+    let p = paddles[0];
     if(!p.auto){
       let rect= canvas.getBoundingClientRect();
       let relativeX= e.clientX- rect.left;
@@ -352,12 +354,12 @@ function mouseMoveHandler(e){
 }
 function clickOverlayClicked(){
   clickOverlay.style.display="none";
-  waitingForClickToStart=false;
+  waitingForClickToStart= false;
   storeLocked= true;
   launchBalls();
 }
 
-// Speed-up countdown
+// Speed-up countdown logic
 setInterval(()=>{
   if(!gamePaused && !waitingForClickToStart){
     countdown--;
@@ -382,8 +384,9 @@ function updateProgressBar(){
   progressEl.value= countdown;
 }
 
+
 // ----------------------------------------------------------------------------
-// INIT
+// INIT GAME
 // ----------------------------------------------------------------------------
 function initGame(){
   lives=3;
@@ -414,7 +417,6 @@ function initGame(){
   fireballTimer=0;
 
   balls=[];
-  // place ball near bottom
   balls.push({
     x:300,
     y:350,
@@ -424,7 +426,6 @@ function initGame(){
     active:true
   });
 
-  // re-init upgrades
   upgradesData.forEach(u=>{
     u.level=0;
     u.currentCost= u.baseCost;
@@ -432,8 +433,8 @@ function initGame(){
 
   initLevel();
 
-  storeLocked=true; 
-  waitingForClickToStart=true;
+  storeLocked= true;
+  waitingForClickToStart= true;
   clickOverlay.style.display="block";
 
   renderStore();
@@ -441,17 +442,13 @@ function initGame(){
   updateBallPowerUI();
 }
 
-// Build bricks => *Increased chance* or no random check
+// Build bricks
 function initLevel(){
   bricks=[];
   destroyedBricks=0;
   totalBricks=0;
-
   for(let r=0; r<rowCount; r++){
     for(let c=0; c<colCount; c++){
-      // If you want guaranteed bricks, remove the if() entirely
-      // if (Math.random() < 0.95) => ~95% chance
-      // or remove the check => 100% fill
       if(Math.random()<0.95){
         let bX= brickOffsetLeft + c*(brickWidth+ brickPadding);
         let bY= brickOffsetTop + r*(brickHeight+ brickPadding);
@@ -475,8 +472,8 @@ function placeBallOnPaddle(){
     ball.dy=0;
     let p= paddles[0];
     ball.x= p.x + p.width/2;
-    let paddleTop= 400- (10+5+ p.yOffset);
-    ball.y= paddleTop - ballRadius;
+    let paddleTop= 400-(10+5+ p.yOffset);
+    ball.y= paddleTop - ball.radius;
   });
 }
 function launchBalls(){
@@ -489,7 +486,7 @@ function launchBalls(){
 }
 function goToNextLevel(){
   if(interestRate>0){
-    let gain= Math.floor(money*interestRate);
+    let gain= Math.floor(money* interestRate);
     money+= gain;
     updateMoneyUI();
   }
@@ -497,17 +494,17 @@ function goToNextLevel(){
   initLevel();
   placeBallOnPaddle();
   storeLocked=false;
-  waitingForClickToStart=true;
+  waitingForClickToStart= true;
   clickOverlay.style.display="block";
   gamePaused=false;
   renderStore();
 }
 function betweenLevels(){
-  gamePaused=true;
+  gamePaused= true;
   overlayEl.style.display="flex";
   choicesContainerEl.innerHTML="";
 
-  let available=[...POWERUP_TYPES];
+  let available= [...POWERUP_TYPES];
   let choice1= available.splice(Math.floor(Math.random()* available.length),1)[0];
   let choice2= available.splice(Math.floor(Math.random()* available.length),1)[0];
 
@@ -525,7 +522,10 @@ function betweenLevels(){
   });
 }
 
-// Store upgrades
+
+// ----------------------------------------------------------------------------
+// STORE / UPGRADES
+// ----------------------------------------------------------------------------
 let upgradesData = [
   {
     category: "Powerups",
@@ -551,7 +551,7 @@ let upgradesData = [
     level: 0,
     currentCost: 50,
     oneTime: false,
-    title: "Each purchase adds +10% to your money multiplier.",
+    title: "Adds +10% to your money multiplier.",
     requiresAutoPaddle: true,
     onPurchase: function(){
       moneyMultiplier+=0.1;
@@ -566,7 +566,7 @@ let upgradesData = [
     level: 0,
     currentCost: 50,
     oneTime: false,
-    title: "Each purchase adds +10% to block value multiplier.",
+    title: "Adds +10% to block value multiplier.",
     requiresAutoPaddle: true,
     onPurchase: function(){
       blockValueMultiplier+=0.1;
@@ -599,7 +599,7 @@ let upgradesData = [
     title: "Each purchase reduces store cost by 10%.",
     requiresAutoPaddle: true,
     onPurchase: function(){
-      storeDiscount += 0.1;
+      storeDiscount+=0.1;
       if(storeDiscount>0.8) storeDiscount=0.8;
     }
   },
@@ -637,10 +637,10 @@ let upgradesData = [
     level: 0,
     currentCost: 50,
     oneTime: true,
-    title: "One-time. Paddles angle bounces at average x of bricks.",
+    title: "One-time. Paddles angle bounces at the average x of bricks.",
     requiresAutoPaddle: true,
     onPurchase: function(){
-      smartPaddlesActive=true;
+      smartPaddlesActive= true;
     }
   }
 ];
@@ -739,9 +739,10 @@ function purchaseUpgrade(idx){
   }
 }
 
-////////////////////////////////////////////////////////////////////////////////
+
+// ----------------------------------------------------------------------------
 // spawnAdditionalBalls => Inherit Speed
-////////////////////////////////////////////////////////////////////////////////
+// ----------------------------------------------------------------------------
 function spawnAdditionalBalls() {
   if(balls.length===0) return;
 
@@ -789,7 +790,7 @@ function draw(){
 
   autoPaddleLogic();
 
-  // manual movement for the first paddle if not auto
+  // manual
   let mainPad= paddles[0];
   if(!mainPad.auto){
     if(rightPressed && mainPad.x<600- mainPad.width){
@@ -820,7 +821,6 @@ function draw(){
     }
   });
   if(!anyActive){
-    // lost life
     lives--;
     if(lives>0){
       storeLocked=false;
@@ -836,7 +836,10 @@ function draw(){
   requestAnimationFrame(draw);
 }
 
-// auto paddle => multi
+
+// ----------------------------------------------------------------------------
+// AUTO PADDLE LOGIC => SPLIT TARGETS, STABLE OFFSET IF NOT SMART
+// ----------------------------------------------------------------------------
 let objectIdCounter=0;
 function autoPaddleLogic(){
   let objects=[];
@@ -844,7 +847,7 @@ function autoPaddleLogic(){
   balls.forEach(b=>{
     if(b.active){
       if(!b._objId) b._objId= ++objectIdCounter;
-      objects.push({ x:b.x, y:b.y, id:b._objId});
+      objects.push({ x:b.x, y:b.y, id:b._objId });
     }
   });
   powerUps.forEach(p=>{
@@ -852,7 +855,7 @@ function autoPaddleLogic(){
       if(!p._objId) p._objId= ++objectIdCounter;
       let cx= p.x+ p.width/2;
       let cy= p.y+ p.height/2;
-      objects.push({ x:cx, y:cy, id:p._objId});
+      objects.push({ x:cx, y:cy, id:p._objId });
     }
   });
   if(objects.length===0)return;
@@ -888,78 +891,143 @@ function autoPaddleLogic(){
   });
 }
 
+
+// ----------------------------------------------------------------------------
+// COLLISION DETECTION: IMPROVED
+// Use bounding box overlap with the ball’s perimeter (radius).
+// Decide which axis to bounce on by smallest overlap. Also push out.
+// ----------------------------------------------------------------------------
 function collisionDetectionBall(ball){
+  // 1) Collide with bricks
   for(let br of bricks){
     if(br.status===1){
-      if(
-        ball.x> br.x &&
-        ball.x< br.x+60 &&
-        ball.y> br.y &&
-        ball.y< br.y+20
-      ){
-        let old= br.hitsLeft;
-        br.hitsLeft-= ballPower;
-        if(!(fireballActive && ballPower>= old)){
-          if (ball.dy > 0) {
-            // ball was moving down
-            ball.y = br.y - ball.radius; 
-          } else {
-            // ball was moving up
-            ball.y = br.y + brickHeight + ball.radius;
-          }
-          ball.dy = -ball.dy;
-        }
-        if(br.hitsLeft<=0){
-          br.status=0;
-          destroyedBricks++;
-          score++;
-          money+= Math.floor(br.value* moneyMultiplier);
-          updateMoneyUI();
-          if(Math.random()<0.3){
-            spawnPowerUp(br.x+30-8, br.y+10-8);
-          }
-          checkLevelComplete();
-        }
-      }
+      checkCollisionWithRect(ball, br.x, br.y, 60, 20, "brick", br);
     }
   }
-  // walls
-  if(ball.x+ ball.dx< ball.radius || ball.x+ ball.dx> 600- ball.radius){
+  // 2) Collide with paddle(s)
+  for(let p of paddles){
+    let paddleTop= 400 - (10 + 5 + p.yOffset);
+    checkCollisionWithRect(ball, p.x, paddleTop, p.width, 10, "paddle", p);
+  }
+  // 3) Collide with walls
+  if(ball.x - ball.radius < 0){
+    ball.x = ball.radius;
     ball.dx= -ball.dx;
   }
-  if(ball.y+ ball.dy< ball.radius){
+  if(ball.x + ball.radius > 600){
+    ball.x = 600 - ball.radius;
+    ball.dx= -ball.dx;
+  }
+  if(ball.y - ball.radius < 0){
+    ball.y = ball.radius;
     ball.dy= -ball.dy;
-  } else if(ball.y+ ball.dy> 400- ball.radius){
-    let hitPaddle=false;
-    for(let p of paddles){
-      let paddleTop= 400-(10+5+ p.yOffset);
-      if(
-        ball.x> p.x &&
-        ball.x< p.x+ p.width &&
-        ball.y+ ball.dy> paddleTop- ball.radius
-      ){
-        bounceBallOffPaddle(ball,p);
-        hitPaddle=true;
-        break;
-      }
-    }
-    if(!hitPaddle){
-      ball.active=false;
-    }
+  }
+  if(ball.y + ball.radius > 400){
+    // We'll handle “ball lost” outside this function
   }
 }
+
+// The main bounding-box overlap approach:
+function checkCollisionWithRect(ball, rx, ry, rw, rh, type, dataObj){
+  // bounding box for the ball = (ball.x - r, ball.y - r, 2r, 2r)
+  // bounding box for rect = (rx, ry, rw, rh)
+  let bx1 = ball.x - ball.radius;
+  let bx2 = ball.x + ball.radius;
+  let by1 = ball.y - ball.radius;
+  let by2 = ball.y + ball.radius;
+
+  let rx1 = rx;
+  let rx2 = rx + rw;
+  let ry1 = ry;
+  let ry2 = ry + rh;
+
+  // overlap in x?
+  if(bx2 < rx1 || bx1 > rx2) return; // no overlap
+  // overlap in y?
+  if(by2 < ry1 || by1 > ry2) return; // no overlap
+
+  // We have overlap => compute overlap distances in x & y
+  let overlapX = 0;
+  if(bx2 > rx1 && bx1 < rx2){
+    overlapX = Math.min(bx2 - rx1, rx2 - bx1);
+  }
+  let overlapY = 0;
+  if(by2 > ry1 && by1 < ry2){
+    overlapY = Math.min(by2 - ry1, ry2 - by1);
+  }
+
+  // pick smaller overlap => that's axis to bounce
+  if(overlapX < overlapY){
+    // bounce horizontally
+    if(ball.x < rx) {
+      // the ball is on the left side => push left
+      ball.x = rx - ball.radius;
+      // flip dx
+      ball.dx= -Math.abs(ball.dx);
+    } else {
+      // ball on right side => push right
+      ball.x = rx + rw + ball.radius;
+      ball.dx= Math.abs(ball.dx);
+    }
+  } else {
+    // bounce vertically
+    if(ball.y < ry){
+      // ball above
+      ball.y = ry - ball.radius;
+      ball.dy= -Math.abs(ball.dy);
+    } else {
+      // ball below
+      ball.y = ry + rh + ball.radius;
+      ball.dy= Math.abs(ball.dy);
+    }
+  }
+
+  // If it's a brick => reduce hitsLeft, possibly destroy
+  if(type==="brick"){
+    handleBrickCollision(ball, dataObj);
+  }
+}
+
+// Called if we confirm we collided with a brick
+function handleBrickCollision(ball, br){
+  let old= br.hitsLeft;
+  br.hitsLeft-= ballPower;
+  // If not a fireball pass-thru
+  if(!(fireballActive && ballPower>= old)){
+    // We already did the bounce in checkCollisionWithRect
+  }
+  if(br.hitsLeft<=0){
+    br.status=0;
+    destroyedBricks++;
+    score++;
+    money+= Math.floor(br.value* moneyMultiplier);
+    updateMoneyUI();
+    if(Math.random()< powerUpChance){
+      // spawn in the center
+      spawnPowerUp(br.x + 30 - 8, br.y + 10 -8);
+    }
+    checkLevelComplete();
+  }
+}
+
+
+// Check if we finished the level
 function checkLevelComplete(){
   if(destroyedBricks=== totalBricks){
-    setTimeout(()=> betweenLevels(),300);
+    setTimeout(()=> betweenLevels(), 300);
   }
 }
 function bounceBallOffPaddle(ball,pad){
+  // This is now handled by bounding overlap in checkCollisionWithRect
+  // We can do “smart vs normal bounce” if you want an extra effect.
   if(!smartPaddlesActive){
     normalBounceLogic(ball,pad);
   } else {
     smartBounceLogic(ball,pad);
   }
 }
+
+// We keep them for the angle approach if you want more variety after bounding box
 function normalBounceLogic(ball,pad){
   let center= pad.x+ pad.width/2;
   let dist= ball.x- center;
@@ -975,7 +1043,7 @@ function normalBounceLogic(ball,pad){
   ball.dy= -Math.abs(speed* Math.cos(angle));
 }
 function smartBounceLogic(ball,pad){
-  let sum=0,count=0;
+  let sum=0, count=0;
   bricks.forEach(br=>{
     if(br.status===1){
       sum+=(br.x+30);
@@ -997,6 +1065,8 @@ function smartBounceLogic(ball,pad){
   ball.dy= -Math.abs(speed* Math.cos(angle));
 }
 
+
+// Bullets
 function updateBullets(){
   bullets.forEach(b=>{
     if(!gamePaused && !waitingForClickToStart){
@@ -1010,15 +1080,23 @@ function updateBullets(){
   });
   bullets= bullets.filter(bb=> bb.active);
 }
+
+// Similar bounding overlap for bullet vs bricks
 function collisionDetectionBullet(bullet){
   for(let br of bricks){
     if(br.status===1){
-      if(
-        bullet.x< br.x+60 &&
-        bullet.x+ bullet.width> br.x &&
-        bullet.y< br.y+20 &&
-        bullet.y+ bullet.height> br.y
-      ){
+      // bounding boxes
+      let bx1 = bullet.x;
+      let bx2 = bullet.x+ bullet.width;
+      let by1 = bullet.y;
+      let by2 = bullet.y+ bullet.height;
+
+      let rx1 = br.x;
+      let rx2 = br.x+60;
+      let ry1 = br.y;
+      let ry2 = br.y+20;
+
+      if(bx2 > rx1 && bx1 < rx2 && by2> ry1 && by1< ry2){
         br.hitsLeft--;
         bullet.active=false;
         if(br.hitsLeft<=0){
@@ -1037,6 +1115,9 @@ function collisionDetectionBullet(bullet){
     }
   }
 }
+
+
+// Update power-ups
 function updatePowerUps(){
   powerUps.forEach(p=>{
     if(!p.active)return;
@@ -1101,7 +1182,7 @@ function drawBricks(){
   for(let br of bricks){
     if(br.status===1){
       ctx.beginPath();
-      ctx.rect(br.x, br.y, 60,20);
+      ctx.rect(br.x, br.y, 60, 20);
       ctx.fillStyle="#0095DD";
       ctx.fill();
       ctx.closePath();
@@ -1148,7 +1229,7 @@ function drawHUD(){
   ctx.font="16px Arial";
   ctx.fillStyle="#0095DD";
   ctx.textAlign="left";
-  ctx.fillText("Score: "+ score,20,y);
+  ctx.fillText("Score: "+ score, 20,y);
 
   ctx.textAlign="center";
   ctx.fillText("Level: "+ currentLevel, 300,y);
@@ -1197,10 +1278,10 @@ function updatePowerupUI(){
   }
 }
 function updateBallPowerUI(){
-  document.getElementById("ballPowerDisplay").textContent="Ball Power: "+ ballPower;
+  document.getElementById("ballPowerDisplay").textContent= "Ball Power: "+ ballPower;
 }
 function updateMoneyUI(){
-  document.getElementById("moneyDisplay").textContent="Money: "+ money;
+  document.getElementById("moneyDisplay").textContent= "Money: "+ money;
 }
 
 // ----------------------------------------------------------------------------
