@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Idle-Breakout (600×400, Non-Twitchy Auto + Separate Targets + Random Offset Pre-Smart)</title>
+  <style>
+    /* Overall layout */
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      margin: 10px 0;
+      text-align: center;
+    }
+
+    .main-container {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 20px;
+      margin-top: 10px;
+    }
+    .left-side {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .top-ui {
+      width: 600px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: center;
+    }
+    .top-ui progress {
+      width: 100%;
+      height: 20px;
+    }
+
+    canvas {
+      background: #eee;
+      border: 1px solid #000;
+      display: block;
+    }
+
+    .bottom-ui {
+      margin-top: 10px;
+      font-size: 18px;
+      text-align: center;
+    }
+
+    #upgradeStore {
+      margin-top: 20px;
+      width: 600px;
+      background: #fafafa;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    #upgradeStore h2 {
+      margin: 0 0 10px;
+      text-align: center;
+    }
+    .upgrade-columns {
+      display: flex;
+      flex-direction: row;
+      gap: 10px;
+      justify-content: space-around;
+    }
+    .upgrade-column {
+      flex: 1;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 10px;
+      min-height: 150px;
+    }
+    .upgrade-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 6px 0;
+      padding: 6px;
+      background: #f9f9f9;
+      border: 1px solid #eee;
+      border-radius: 4px;
+    }
+    .upgrade-item button {
+      margin-right: 10px;
+    }
+
+    .sidebar {
+      width: 200px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .powerup-list {
+      list-style-type: none;
+      padding: 0;
+      margin: 0;
+    }
+    .powerup-list li {
+      margin: 5px 0;
+      font-size: 16px;
+    }
+
+    #betweenLevelOverlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.6);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 999;
+    }
+    .between-level-content {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .powerup-choice {
+      display: inline-block;
+      margin: 10px;
+      padding: 10px 15px;
+      border: 2px solid #0095DD;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 24px;
+    }
+    .powerup-choice:hover {
+      background-color: #f0f0f0;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Idle-Breakout (600×400)</h1>
+
+<div class="main-container">
+  <div class="left-side">
+    <div class="top-ui">
+      <progress id="speedProgress" max="10" value="10"></progress>
+    </div>
+
+    <canvas id="myCanvas" width="600" height="400"></canvas>
+
+    <div class="bottom-ui">
+      <div id="moneyDisplay">Money: 0</div>
+      <div id="ballPowerDisplay">Ball Power: 1</div>
+    </div>
+
+    <div id="upgradeStore">
+      <h2>Upgrades</h2>
+      <div id="upgradeColumns" class="upgrade-columns">
+        <div id="investmentColumn" class="upgrade-column"></div>
+        <div id="powerupColumn" class="upgrade-column"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <h2>Power-Ups</h2>
+    <ul id="powerupList" class="powerup-list"></ul>
+  </div>
+</div>
+
+<div id="betweenLevelOverlay">
+  <div class="between-level-content">
+    <h2>Choose a Power-Up!</h2>
+    <div id="choicesContainer"></div>
+  </div>
+</div>
+
+<script>
+////////////////////////////////////////////////////////////////////////////////
+// CANVAS & GLOBALS
+////////////////////////////////////////////////////////////////////////////////
+const canvas = document.getElementById("myCanvas");
+const ctx = canvas.getContext("2d");
+
+const overlayEl = document.getElementById("betweenLevelOverlay");
+const choicesContainerEl = document.getElementById("choicesContainer");
+
+let gamePaused = false;
+
+let lives = 3;
+let score = 0;
+let currentLevel = 1;
+let ballPower = 1;
+
+// Money / idle
+let money = 0;
+let moneyMultiplier = 1;
+let interestRate = 0;
+let storeDiscount = 0;
+
+let smartPaddlesActive = false; // new logic to aim bounces at bricks if purchased
+
+// Paddles array
+// Each paddle = { x, width, speed, auto, yOffset, currentTargetId, offsetX }
+let paddles = [];
+
+// For manual
+let rightPressed = false;
+let leftPressed = false;
+
+// Balls
+const ballRadius = 8;
+let balls = [];
+const initialBallSpeedX = 1;
+const initialBallSpeedY = -1;
+
+// Bricks
+let bricks = [];
+const rowCount = 5;
+const colCount = 8;
+const brickWidth = 60;
+const brickHeight = 20;
+const brickPadding = 2;
+const totalBrickWidth = colCount*(brickWidth + brickPadding);
+const brickOffsetLeft = (canvas.width - totalBrickWidth)/2;
+const brickOffsetTop = 50;
+let totalBricks = 0;
+let destroyedBricks = 0;
+
+// Power-ups
+let powerupInventory = {
+  bigPaddle: 0,
+  extraLife: 0,
+  multiBall: 0,
+  gun: 0,
+  ballPower: 0
+};
+let powerUps = [];
+const powerUpChance = 0.3;
+
+let fireballActive = false;
+let fireballTimer = 0;
+
+const POWERUP_TYPES = ["bigPaddle","extraLife","multiBall","gun","ballPower","fireball"];
+const POWERUP_ICONS = {
+  bigPaddle: "🏏",
+  extraLife: "❤️",
+  multiBall: "🔮",
+  gun: "🔫",
+  ballPower: "💪",
+  fireball: "🔥"
+};
+const POWERUP_NAMES = {
+  bigPaddle: "Big Paddle!",
+  extraLife: "Extra Life!",
+  multiBall: "Multi-Ball!",
+  gun: "Gun!",
+  ballPower: "Ball Power!",
+  fireball: "Fireball!"
+};
+const POWERUP_TOOLTIPS = {
+  bigPaddle: "Temporarily increase paddle width.",
+  extraLife: "Gain 1 extra life.",
+  multiBall: "Spawn additional balls immediately.",
+  gun: "Enables shooting bullets with left-click.",
+  ballPower: "Increase ball damage by 1.",
+  fireball: "Ball can pass through bricks if strong enough."
+};
+
+let powerupMessage = "";
+let powerupMessageTimer = 0;
+
+// Bullets
+let bullets = [];
+const bulletWidth = 2;
+const bulletHeight = 8;
+let bulletSpeed = 4;
+
+////////////////////////////////////////////////////////////////////////////////
+// MOUSE: LEFT-CLICK => FIRE BULLET (if we have "gun" powerup)
+////////////////////////////////////////////////////////////////////////////////
+document.addEventListener("mousedown", (e) => {
+  if (!gamePaused && e.button === 0 && powerupInventory.gun > 0) {
+    fireBullet();
+    powerupInventory.gun--;
+    updatePowerupUI();
+  }
+});
+function fireBullet() {
+  let pad = paddles[0];
+  bullets.push({
+    x: pad.x + pad.width/2 - bulletWidth/2,
+    y: canvas.height - (10 + 5 + pad.yOffset),
+    width: bulletWidth,
+    height: bulletHeight,
+    speed: bulletSpeed,
+    active: true
+  });
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// SPEED-UP COUNTDOWN
+////////////////////////////////////////////////////////////////////////////////
+let countdown = 10;
+const progressEl = document.getElementById("speedProgress");
+let speedMessage = "";
+let speedMessageTimer = 0;
+
+setInterval(() => {
+  if (!gamePaused) {
+    countdown--;
+    if (countdown < 0) {
+      speedUpGame();
+      speedMessage = "Game speed increased by 10%!";
+      speedMessageTimer = 120;
+      countdown = 10;
+    }
+    updateProgressBar();
+  }
+}, 1000);
+
+function updateProgressBar() {
+  progressEl.value = countdown;
+}
+
+function speedUpGame() {
+  balls.forEach(b => { b.dx *= 1.1; b.dy *= 1.1; });
+  bullets.forEach(b => b.speed *= 1.1);
+  bulletSpeed *= 1.1;
+  powerUps.forEach(p => p.speed *= 1.1);
+  paddles.forEach(p => p.speed *= 1.1);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// EVENT LISTENERS: KEYS & MOUSEMOVE
+////////////////////////////////////////////////////////////////////////////////
+document.addEventListener("keydown", keyDownHandler);
+document.addEventListener("keyup", keyUpHandler);
+document.addEventListener("mousemove", mouseMoveHandler);
+
+function keyDownHandler(e) {
+  if (!gamePaused) {
+    if (e.key === "Right" || e.key === "ArrowRight") {
+      rightPressed = true;
+    } else if (e.key === "Left" || e.key === "ArrowLeft") {
+      leftPressed = true;
+    }
+  }
+}
+function keyUpHandler(e) {
+  if (!gamePaused) {
+    if (e.key === "Right" || e.key === "ArrowRight") {
+      rightPressed = false;
+    } else if (e.key === "Left" || e.key === "ArrowLeft") {
+      leftPressed = false;
+    }
+  }
+}
+function mouseMoveHandler(e) {
+  if (!gamePaused) {
+    let p = paddles[0];
+    if (!p.auto) {
+      let relativeX = e.clientX - canvas.offsetLeft;
+      if (relativeX > 0 && relativeX < canvas.width) {
+        p.x = relativeX - p.width / 2;
+      }
+    }
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UPGRADE DATA
+////////////////////////////////////////////////////////////////////////////////
+let upgradesData = [
+  // Investments
+  {
+    category: "Investments",
+    name: "More Money",
+    description: "Earn +10% more money from each brick.",
+    baseCost: 50,
+    costFactor: 1.5,
+    level: 0,
+    currentCost: 50,
+    oneTime: false,
+    title: "Each purchase adds 10% to your money multiplier.",
+    onPurchase: function() {
+      moneyMultiplier += 0.1;
+    }
+  },
+  {
+    category: "Investments",
+    name: "Interest on Balance",
+    description: "Gain +5% interest at the end of each level.",
+    baseCost: 50,
+    costFactor: 1.5,
+    level: 0,
+    currentCost: 50,
+    oneTime: false,
+    title: "Each purchase adds 5% interest on your money at level end.",
+    onPurchase: function() {
+      interestRate += 0.05;
+    }
+  },
+  {
+    category: "Investments",
+    name: "Reduced Powerup Cost",
+    description: "All store items become 10% cheaper.",
+    baseCost: 50,
+    costFactor: 1.5,
+    level: 0,
+    currentCost: 50,
+    oneTime: false,
+    title: "Each purchase reduces future store costs by 10%.",
+    onPurchase: function() {
+      storeDiscount += 0.1;
+      if (storeDiscount > 0.8) storeDiscount = 0.8;
+    }
+  },
+
+  // Powerups
+  {
+    category: "Powerups",
+    name: "Auto Paddle",
+    description: "Auto-move the paddle (slight offset if not Smart).",
+    baseCost: 50,
+    costFactor: 2.0,
+    level: 0,
+    currentCost: 50,
+    oneTime: true,
+    title: "One-time. Paddles chase separate items automatically.",
+    onPurchase: function() {
+      paddles[0].auto = true;
+    }
+  },
+  {
+    category: "Powerups",
+    name: "More Paddles",
+    description: "Split your main paddle into multiple smaller paddles.",
+    baseCost: 50,
+    costFactor: 2.0,
+    level: 0,
+    currentCost: 50,
+    oneTime: true,
+    title: "One-time. Add a second auto paddle at the bottom.",
+    onPurchase: function() {
+      paddles.push({
+        x: paddles[0].x,
+        width: paddles[0].width,
+        speed: paddles[0].speed,
+        auto: paddles[0].auto,
+        yOffset: 5,
+        currentTargetId: null, // for random offset logic
+        offsetX: 0
+      });
+      let newWidth = Math.floor(75 / 2);
+      paddles.forEach(p => { p.width = newWidth; });
+    }
+  },
+  {
+    category: "Powerups",
+    name: "Smart Paddles",
+    description: "Aim ball bounces at remaining bricks.",
+    baseCost: 50,
+    costFactor: 2.0,
+    level: 0,
+    currentCost: 50,
+    oneTime: true,
+    title: "One-time. Paddles angle bounces toward average x of active bricks.",
+    onPurchase: function() {
+      smartPaddlesActive = true;
+    }
+  }
+];
+
+function renderStore() {
+  let investDiv = document.getElementById("investmentColumn");
+  let powerDiv = document.getElementById("powerupColumn");
+  investDiv.innerHTML = "";
+  powerDiv.innerHTML = "";
+
+  let invests = upgradesData.filter(u => u.category === "Investments");
+  let powers = upgradesData.filter(u => u.category === "Powerups");
+
+  invests.forEach(u => {
+    let div = document.createElement("div");
+    div.className = "upgrade-item";
+    div.title = u.title || u.description;
+
+    let left = document.createElement("div");
+    left.innerHTML = `<strong>${u.name}</strong> (Lvl: ${u.level})<br>${u.description}`;
+
+    let right = document.createElement("div");
+    let costSpan = document.createElement("span");
+    costSpan.textContent = `Cost: ${u.currentCost}`;
+    costSpan.style.marginRight = "10px";
+    let btn = document.createElement("button");
+    btn.textContent = "Buy";
+    btn.onclick = () => purchaseUpgrade(upgradesData.indexOf(u));
+
+    right.appendChild(costSpan);
+    right.appendChild(btn);
+    div.appendChild(left);
+    div.appendChild(right);
+    investDiv.appendChild(div);
+  });
+
+  powers.forEach(u => {
+    let div = document.createElement("div");
+    div.className = "upgrade-item";
+    div.title = u.title || u.description;
+
+    let left = document.createElement("div");
+    left.innerHTML = `<strong>${u.name}</strong> (Lvl: ${u.level})<br>${u.description}`;
+
+    let right = document.createElement("div");
+    let costSpan = document.createElement("span");
+    costSpan.textContent = `Cost: ${u.currentCost}`;
+    costSpan.style.marginRight = "10px";
+    let btn = document.createElement("button");
+    btn.textContent = "Buy";
+    btn.onclick = () => purchaseUpgrade(upgradesData.indexOf(u));
+
+    right.appendChild(costSpan);
+    right.appendChild(btn);
+    div.appendChild(left);
+    div.appendChild(right);
+    powerDiv.appendChild(div);
+  });
+}
+
+function purchaseUpgrade(idx) {
+  let upg = upgradesData[idx];
+  let finalCost = upg.currentCost;
+  if (money >= finalCost) {
+    money -= finalCost;
+    // effect
+    upg.onPurchase();
+
+    if (upg.oneTime) {
+      // remove from store
+      upgradesData.splice(idx, 1);
+    } else {
+      upg.level++;
+      let discountedBase = upg.baseCost * (1 - storeDiscount);
+      if (discountedBase < 1) discountedBase = 1;
+      upg.currentCost = Math.floor(discountedBase * Math.pow(upg.costFactor, upg.level));
+    }
+    renderStore();
+    updateMoneyUI();
+  }
+}
+
+// --------------------------------------------------------------------------------
+// INIT GAME
+// --------------------------------------------------------------------------------
+function initGame() {
+  lives = 3;
+  score = 0;
+  currentLevel = 1;
+  ballPower = 1;
+  money = 0;
+  moneyMultiplier = 1;
+  interestRate = 0;
+  storeDiscount = 0;
+  smartPaddlesActive = false;
+
+  // Single manual paddle
+  // We'll store currentTargetId & offsetX for random offset logic
+  paddles = [{
+    x: (canvas.width - 75)/2,
+    width: 75,
+    speed: 4,
+    auto: false,
+    yOffset: 0,
+    currentTargetId: null,
+    offsetX: 0
+  }];
+
+  // Clear inventory
+  for (let key in powerupInventory) {
+    powerupInventory[key] = 0;
+  }
+  fireballActive = false;
+  fireballTimer = 0;
+
+  // One ball near bottom
+  balls = [];
+  balls.push({
+    x: canvas.width/2,
+    y: 350,
+    dx: initialBallSpeedX,
+    dy: initialBallSpeedY,
+    radius: ballRadius,
+    active: true
+  });
+
+  // Reset upgrades
+  upgradesData.forEach(u => {
+    u.level = 0;
+    u.currentCost = u.baseCost;
+  });
+
+  initLevel();
+  renderStore();
+  updateMoneyUI();
+  updateBallPowerUI();
+}
+
+function initLevel() {
+  bricks = [];
+  destroyedBricks = 0;
+  totalBricks = 0;
+
+  for (let r = 0; r < rowCount; r++) {
+    for (let c = 0; c < colCount; c++) {
+      if (Math.random() < 0.7) {
+        let bX = brickOffsetLeft + c*(brickWidth + brickPadding);
+        let bY = brickOffsetTop + r*(brickHeight + brickPadding);
+        bricks.push({
+          x: bX,
+          y: bY,
+          status: 1,
+          hitsLeft: currentLevel,
+          value: currentLevel
+        });
+        totalBricks++;
+      }
+    }
+  }
+}
+
+function goToNextLevel() {
+  // interest
+  if (interestRate > 0) {
+    let interestGain = Math.floor(money * interestRate);
+    money += interestGain;
+    updateMoneyUI();
+  }
+  currentLevel++;
+  initLevel();
+  gamePaused = false;
+}
+
+function betweenLevels() {
+  gamePaused = true;
+  overlayEl.style.display = "flex";
+  choicesContainerEl.innerHTML = "";
+
+  let available = [...POWERUP_TYPES];
+  let choice1 = available.splice(Math.floor(Math.random() * available.length),1)[0];
+  let choice2 = available.splice(Math.floor(Math.random() * available.length),1)[0];
+
+  [choice1, choice2].forEach(choice => {
+    let btn = document.createElement("div");
+    btn.className = "powerup-choice";
+    btn.textContent = POWERUP_ICONS[choice];
+    btn.title = POWERUP_TOOLTIPS[choice] || "A powerup";
+    btn.onclick = () => {
+      applyPowerUpEffect(choice);
+      overlayEl.style.display = "none";
+      goToNextLevel();
+    };
+    choicesContainerEl.appendChild(btn);
+  });
+}
+
+// --------------------------------------------------------------------------------
+// POWERUP LOGIC
+// --------------------------------------------------------------------------------
+function spawnPowerUp(px, py) {
+  let type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+  powerUps.push({
+    x: px,
+    y: py,
+    type: type,
+    active: true,
+    width: 16,
+    height: 16,
+    speed: 2
+  });
+}
+
+function updatePowerUps() {
+  for (let p of powerUps) {
+    if (!p.active) continue;
+    if (!gamePaused) {
+      p.y += p.speed;
+    }
+    // check collision with each paddle
+    for (let pad of paddles) {
+      let paddleTop = canvas.height - (10 + 5 + pad.yOffset);
+      if (
+        p.y + p.height >= paddleTop &&
+        p.x + p.width >= pad.x &&
+        p.x <= pad.x + pad.width
+      ) {
+        applyPowerUpEffect(p.type);
+        p.active = false;
+        break;
+      }
+    }
+    if (p.y > canvas.height) p.active = false;
+  }
+  powerUps = powerUps.filter(pp => pp.active);
+}
+
+function applyPowerUpEffect(type) {
+  powerupMessage = POWERUP_NAMES[type];
+  powerupMessageTimer = 120;
+
+  switch (type) {
+    case "bigPaddle":
+      powerupInventory.bigPaddle++;
+      paddles.forEach(p => {
+        p.width += 30;
+        if (p.width>150) p.width=150;
+      });
+      break;
+    case "extraLife":
+      powerupInventory.extraLife++;
+      lives++;
+      break;
+    case "multiBall":
+      powerupInventory.multiBall++;
+      spawnAdditionalBalls();
+      break;
+    case "gun":
+      powerupInventory.gun++;
+      break;
+    case "ballPower":
+      powerupInventory.ballPower++;
+      ballPower++;
+      updateBallPowerUI();
+      break;
+    case "fireball":
+      fireballActive = true;
+      fireballTimer = 600; // ~10s
+      break;
+    default:
+      break;
+  }
+  updatePowerupUI();
+}
+
+function spawnAdditionalBalls() {
+  if (balls.length===0) return;
+  let mainBall= balls[0];
+  for (let i=0;i<2;i++){
+    let newDx= (Math.random()<0.5)?1:-1;
+    let newDy= -1;
+    balls.push({
+      x: mainBall.x,
+      y: mainBall.y,
+      dx: newDx,
+      dy: newDy,
+      radius: ballRadius,
+      active: true
+    });
+  }
+}
+
+// --------------------------------------------------------------------------------
+// BULLETS
+// --------------------------------------------------------------------------------
+function updateBullets() {
+  bullets.forEach(b => {
+    if(!b.active)return;
+    if(!gamePaused){
+      b.y -= b.speed;
+    }
+    if(b.y+b.height<0){
+      b.active=false;
+      return;
+    }
+    collisionDetectionBullet(b);
+  });
+  bullets= bullets.filter(bb=>bb.active);
+}
+
+function collisionDetectionBullet(bullet) {
+  for (let br of bricks) {
+    if (br.status===1) {
+      if (
+        bullet.x< br.x+brickWidth &&
+        bullet.x+ bullet.width> br.x &&
+        bullet.y< br.y+ brickHeight &&
+        bullet.y+ bullet.height> br.y
+      ) {
+        br.hitsLeft--;
+        bullet.active=false;
+        if (br.hitsLeft<=0){
+          br.status=0;
+          destroyedBricks++;
+          score++;
+          money += Math.floor(br.value*moneyMultiplier);
+          updateMoneyUI();
+          if(Math.random()<powerUpChance){
+            spawnPowerUp(br.x + brickWidth/2 - 8, br.y + brickHeight/2 - 8);
+          }
+          checkLevelComplete();
+        }
+        return;
+      }
+    }
+  }
+}
+
+// --------------------------------------------------------------------------------
+// BALL COLLISIONS
+// --------------------------------------------------------------------------------
+function collisionDetectionBall(ball) {
+  // check bricks
+  for (let br of bricks){
+    if(br.status===1){
+      if(
+        ball.x>br.x &&
+        ball.x<br.x+brickWidth &&
+        ball.y>br.y &&
+        ball.y< br.y+ brickHeight
+      ){
+        let oldHits= br.hitsLeft;
+        br.hitsLeft-= ballPower;
+        if(!(fireballActive && ballPower>=oldHits)){
+          ball.dy= -ball.dy;
+        }
+        if(br.hitsLeft<=0){
+          br.status=0;
+          destroyedBricks++;
+          score++;
+          money += Math.floor(br.value * moneyMultiplier);
+          updateMoneyUI();
+          if(Math.random()< powerUpChance){
+            spawnPowerUp(br.x + brickWidth/2 -8, br.y+ brickHeight/2 -8);
+          }
+          checkLevelComplete();
+        }
+      }
+    }
+  }
+  // left/right walls
+  if (ball.x+ball.dx< ball.radius || ball.x+ ball.dx> canvas.width- ball.radius){
+    ball.dx= -ball.dx;
+  }
+  // top
+  if (ball.y+ ball.dy< ball.radius){
+    ball.dy= -ball.dy;
+  }
+  // bottom
+  else if (ball.y+ ball.dy> canvas.height- ball.radius){
+    // check paddles
+    let hitPaddle=false;
+    for (let p of paddles){
+      let paddleTop= canvas.height- (10 + 5 + p.yOffset);
+      if(
+        ball.x> p.x &&
+        ball.x< p.x+ p.width &&
+        ball.y+ ball.dy> paddleTop- ball.radius
+      ){
+        bounceBallOffPaddle(ball, p);
+        hitPaddle=true;
+        break;
+      }
+    }
+    if(!hitPaddle){
+      ball.active=false;
+    }
+  }
+}
+
+function checkLevelComplete(){
+  if(destroyedBricks=== totalBricks){
+    setTimeout(()=> betweenLevels(),300);
+  }
+}
+
+// Smart Paddles
+function bounceBallOffPaddle(ball, pad){
+  if(!smartPaddlesActive || !anyBricksActive()){
+    normalBounceLogic(ball, pad);
+  } else {
+    smartBounceLogic(ball, pad);
+  }
+}
+
+function normalBounceLogic(ball, pad){
+  let paddleCenter= pad.x + pad.width/2;
+  let distFromCenter= ball.x- paddleCenter;
+  let ratio= distFromCenter/ (pad.width/2);
+  let maxBounceAngle= Math.PI/3;
+  let bounceAngle= ratio * maxBounceAngle;
+  // random angle
+  let randomAngle= (Math.random()-0.5)*0.2;
+  bounceAngle+= randomAngle;
+
+  let speed= Math.sqrt(ball.dx*ball.dx + ball.dy*ball.dy);
+  ball.dx= speed* Math.sin(bounceAngle);
+  ball.dy= -Math.abs(speed* Math.cos(bounceAngle));
+}
+
+function smartBounceLogic(ball, pad){
+  // average X of all active bricks
+  let sumX=0, count=0;
+  bricks.forEach(br=>{
+    if(br.status===1){
+      sumX += (br.x + brickWidth/2);
+      count++;
+    }
+  });
+  if(count===0){
+    normalBounceLogic(ball, pad);
+    return;
+  }
+  let avgX = sumX / count;
+  let distX= avgX - ball.x;
+  let ratio= distX/(canvas.width/2);
+  let maxAngle= Math.PI/3;
+  let bounceAngle= ratio* maxAngle;
+
+  let speed= Math.sqrt(ball.dx*ball.dx + ball.dy*ball.dy);
+  ball.dx= speed* Math.sin(bounceAngle);
+  ball.dy= -Math.abs(speed* Math.cos(bounceAngle));
+}
+
+function anyBricksActive(){
+  return bricks.some(br=> br.status===1);
+}
+
+// --------------------------------------------------------------------------------
+// AUTO PADDLE LOGIC => SPLIT TARGETS, Add stable random offset if not smart
+// We store for each paddle: currentTargetId, offsetX
+// If we assign a new object => generate a new offset. 
+// If user has "Smart Paddles", offset=0
+// --------------------------------------------------------------------------------
+let objectIdCounter=0; // to uniquely identify each object
+function autoPaddleLogic(){
+  let objects=[];
+
+  // gather active balls
+  balls.forEach(b=>{
+    if(b.active){
+      // assign a unique ID so we can detect if the paddle is switching
+      if(!b._objId) b._objId= ++objectIdCounter;
+      objects.push({ x:b.x, y:b.y, id: b._objId });
+    }
+  });
+  // gather active power-ups
+  powerUps.forEach(p=>{
+    if(p.active){
+      if(!p._objId) p._objId= ++objectIdCounter;
+      let cx= p.x+ p.width/2;
+      let cy= p.y+ p.height/2;
+      objects.push({ x: cx, y: cy, id: p._objId});
+    }
+  });
+
+  if(objects.length===0) return;
+
+  // sort by y desc
+  objects.sort((a,b)=> b.y - a.y);
+
+  let autoPads= paddles.filter(p=>p.auto);
+  if(autoPads.length===0)return;
+
+  // for each auto paddle => i-th object
+  autoPads.forEach((pad, i)=>{
+    if(i>=objects.length){
+      return; // no more objects
+    }
+    let obj= objects[i];
+
+    // if the paddle doesn't have smart => do stable random offset
+    if(!smartPaddlesActive){
+      if(pad.currentTargetId!== obj.id){
+        // new object => new random offset
+        pad.currentTargetId= obj.id;
+        // ± 10 px offset
+        pad.offsetX= (Math.random()-0.5)*20;
+      }
+    } else {
+      // if we have smart => no offset
+      pad.currentTargetId= obj.id;
+      pad.offsetX= 0;
+    }
+
+    let targetX= obj.x + pad.offsetX - pad.width/2;
+
+    // clamp
+    if(targetX<0) targetX=0;
+    if(targetX> canvas.width- pad.width) targetX= canvas.width- pad.width;
+
+    let dx= targetX- pad.x;
+    let maxMove= pad.speed;
+    if(Math.abs(dx)<= maxMove){
+      pad.x= targetX;
+    } else {
+      pad.x+= (dx>0? maxMove: -maxMove);
+    }
+  });
+}
+
+// --------------------------------------------------------------------------------
+// MAIN DRAW LOOP
+// --------------------------------------------------------------------------------
+function draw(){
+  ctx.clearRect(0,0, canvas.width,canvas.height);
+
+  drawBricks();
+  drawBalls();
+  drawBullets();
+  drawPaddles();
+  drawHUD();
+  drawPowerUps();
+  drawPowerupMessage();
+  drawSpeedMessage();
+
+  if(gamePaused){
+    requestAnimationFrame(draw);
+    return;
+  }
+
+  // auto paddles => separate targets
+  autoPaddleLogic();
+
+  // manual movement for the first paddle if not auto
+  let mainPad= paddles[0];
+  if(!mainPad.auto){
+    if(rightPressed && mainPad.x< canvas.width- mainPad.width){
+      mainPad.x+= mainPad.speed;
+    } else if(leftPressed && mainPad.x>0){
+      mainPad.x-= mainPad.speed;
+    }
+  }
+
+  // update bullets & power-ups
+  updateBullets();
+  updatePowerUps();
+
+  // fireball
+  if(fireballActive){
+    fireballTimer--;
+    if(fireballTimer<=0) fireballActive=false;
+  }
+
+  // move & collide balls
+  balls.forEach(ball=>{
+    if(!ball.active)return;
+    collisionDetectionBall(ball);
+    ball.x+= ball.dx;
+    ball.y+= ball.dy;
+  });
+  balls= balls.filter(b=>b.active);
+
+  // lose life if no balls
+  if(balls.length===0){
+    lives--;
+    if(lives>0){
+      // new ball
+      balls.push({
+        x: canvas.width/2,
+        y: 350,
+        dx: initialBallSpeedX,
+        dy: initialBallSpeedY,
+        radius: ballRadius,
+        active: true
+      });
+    } else {
+      alert("GAME OVER");
+      document.location.reload();
+    }
+  }
+
+  requestAnimationFrame(draw);
+}
+
+// draw utils
+function drawPaddles(){
+  paddles.forEach(p=>{
+    let paddleTop= canvas.height- (10+5+p.yOffset);
+    ctx.beginPath();
+    ctx.rect(p.x, paddleTop, p.width, 10);
+    ctx.fillStyle="#0095DD";
+    ctx.fill();
+    ctx.closePath();
+  });
+}
+
+function drawHUD(){
+  let yPos=25;
+  ctx.font="16px Arial";
+  ctx.fillStyle="#0095DD";
+  // Score left
+  ctx.textAlign="left";
+  ctx.fillText("Score: "+score,20,yPos);
+  // Level center
+  ctx.textAlign="center";
+  ctx.fillText("Level: "+currentLevel, canvas.width/2, yPos);
+  // Lives right
+  ctx.textAlign="right";
+  ctx.fillText("Lives: "+ lives, canvas.width-20,yPos);
+}
+
+function drawPowerupMessage(){
+  if(powerupMessageTimer>0){
+    ctx.font="18px Arial";
+    ctx.fillStyle="green";
+    ctx.textAlign="center";
+    ctx.fillText(powerupMessage, canvas.width/2,50);
+    powerupMessageTimer--;
+  }
+}
+function drawSpeedMessage(){
+  if(speedMessageTimer>0){
+    ctx.font="18px Arial";
+    ctx.fillStyle="red";
+    ctx.textAlign="center";
+    ctx.fillText(speedMessage, canvas.width/2,70);
+    speedMessageTimer--;
+  }
+}
+function drawBricks(){
+  for(let br of bricks){
+    if(br.status===1){
+      ctx.beginPath();
+      ctx.rect(br.x, br.y, brickWidth, brickHeight);
+      ctx.fillStyle="#0095DD";
+      ctx.fill();
+      ctx.closePath();
+
+      ctx.font="14px Arial";
+      ctx.fillStyle="#fff";
+      ctx.textAlign="center";
+      ctx.textBaseline="middle";
+      ctx.fillText(br.hitsLeft, br.x+ brickWidth/2, br.y+ brickHeight/2);
+    }
+  }
+}
+function drawBalls(){
+  balls.forEach(ball=>{
+    if(!ball.active)return;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2);
+    ctx.fillStyle= fireballActive? "#ff0000":"#0095DD";
+    ctx.fill();
+    ctx.closePath();
+  });
+}
+function drawBullets(){
+  bullets.forEach(b=>{
+    if(!b.active)return;
+    ctx.beginPath();
+    ctx.rect(b.x,b.y,b.width,b.height);
+    ctx.fillStyle="black";
+    ctx.fill();
+    ctx.closePath();
+  });
+}
+function drawPowerUps(){
+  powerUps.forEach(p=>{
+    if(!p.active)return;
+    ctx.font="16px Arial";
+    ctx.textAlign="center";
+    ctx.textBaseline="top";
+    ctx.fillText(POWERUP_ICONS[p.type], p.x + p.width/2, p.y);
+  });
+}
+
+// UI Helpers
+function updatePowerupUI(){
+  const listEl= document.getElementById("powerupList");
+  listEl.innerHTML="";
+  for(let type in powerupInventory){
+    let count= powerupInventory[type];
+    if(count>0){
+      let li= document.createElement("li");
+      li.textContent=`${POWERUP_ICONS[type]} x ${count}`;
+      listEl.appendChild(li);
+    }
+  }
+}
+function updateBallPowerUI(){
+  document.getElementById("ballPowerDisplay").textContent="Ball Power: "+ ballPower;
+}
+function updateMoneyUI(){
+  document.getElementById("moneyDisplay").textContent="Money: "+ money;
+}
+
+// --------------------------------------------------------------------------------
+// START
+// --------------------------------------------------------------------------------
+initGame();
+draw();
+</script>
+</body>
+</html>
