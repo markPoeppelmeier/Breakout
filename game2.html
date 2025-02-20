@@ -897,35 +897,65 @@ function autoPaddleLogic(){
 // Use bounding box overlap with the ball’s perimeter (radius).
 // Decide which axis to bounce on by smallest overlap. Also push out.
 // ----------------------------------------------------------------------------
-function collisionDetectionBall(ball){
-  // 1) Collide with bricks
-  for(let br of bricks){
-    if(br.status===1){
-      checkCollisionWithRect(ball, br.x, br.y, 60, 20, "brick", br);
+function collisionDetectionBall(ball) {
+    let nearestBrick = null;
+    let minOverlap = Number.MAX_VALUE;
+    let collisionAxis = null; // "x" or "y"
+
+    // 1️⃣ Check for collisions with bricks
+    for (let br of bricks) {
+        if (br.status === 1) {
+            let overlap = checkCollisionWithRect(ball, br.x, br.y, 60, 20);
+            
+            if (overlap && overlap.amount < minOverlap) {
+                minOverlap = overlap.amount;
+                collisionAxis = overlap.axis;
+                nearestBrick = br;
+            }
+        }
     }
-  }
-  // 2) Collide with paddle(s)
-  for(let p of paddles){
-    let paddleTop= 400 - (10 + 5 + p.yOffset);
-    checkCollisionWithRect(ball, p.x, paddleTop, p.width, 10, "paddle", p);
-  }
-  // 3) Collide with walls
-  if(ball.x - ball.radius < 0){
-    ball.x = ball.radius;
-    ball.dx= -ball.dx;
-  }
-  if(ball.x + ball.radius > 600){
-    ball.x = 600 - ball.radius;
-    ball.dx= -ball.dx;
-  }
-  if(ball.y - ball.radius < 0){
-    ball.y = ball.radius;
-    ball.dy= -ball.dy;
-  }
-  if(ball.y + ball.radius > 400){
-    // We'll handle “ball lost” outside this function
-  }
+
+    // If we found a collision, resolve it
+    if (nearestBrick) {
+        if (collisionAxis === "x") {
+            ball.dx = -ball.dx;
+            ball.x += (ball.dx > 0 ? 1 : -1) * minOverlap; // Push out
+        } else if (collisionAxis === "y") {
+            ball.dy = -ball.dy;
+            ball.y += (ball.dy > 0 ? 1 : -1) * minOverlap; // Push out
+        }
+
+        // Handle brick health
+        handleBrickCollision(ball, nearestBrick);
+    }
+
+    // 2️⃣ Check for collision with paddles
+    for (let p of paddles) {
+        let paddleTop = 400 - (10 + 5 + p.yOffset);
+        let paddleHit = checkCollisionWithRect(ball, p.x, paddleTop, p.width, 10);
+        
+        if (paddleHit) {
+            ball.dy = -Math.abs(ball.dy); // Always bounce upward
+            ball.y = paddleTop - ball.radius; // Prevent sticking
+        }
+    }
+
+    // 3️⃣ Wall Collisions
+    if (ball.x - ball.radius < 0) {
+        ball.x = ball.radius;
+        ball.dx = Math.abs(ball.dx);
+    }
+    if (ball.x + ball.radius > 600) {
+        ball.x = 600 - ball.radius;
+        ball.dx = -Math.abs(ball.dx);
+    }
+    if (ball.y - ball.radius < 0) {
+        ball.y = ball.radius;
+        ball.dy = Math.abs(ball.dy);
+    }
 }
+
+
 
 // The main bounding-box overlap approach:
 function checkCollisionWithRect(ball, rx, ry, rw, rh, type, dataObj){
@@ -989,26 +1019,28 @@ function checkCollisionWithRect(ball, rx, ry, rw, rh, type, dataObj){
 }
 
 // Called if we confirm we collided with a brick
-function handleBrickCollision(ball, br){
-  let old= br.hitsLeft;
-  br.hitsLeft-= ballPower;
-  // If not a fireball pass-thru
-  if(!(fireballActive && ballPower>= old)){
-    // We already did the bounce in checkCollisionWithRect
-  }
-  if(br.hitsLeft<=0){
-    br.status=0;
-    destroyedBricks++;
-    score++;
-    money+= Math.floor(br.value* moneyMultiplier);
-    updateMoneyUI();
-    if(Math.random()< powerUpChance){
-      // spawn in the center
-      spawnPowerUp(br.x + 30 - 8, br.y + 10 -8);
+function handleBrickCollision(ball, br) {
+    let old = br.hitsLeft;
+    br.hitsLeft -= ballPower;
+
+    // If it's a fireball, ignore the bounce
+    if (!(fireballActive && ballPower >= old)) {
+        // Ball already reversed direction in collisionDetectionBall()
     }
-    checkLevelComplete();
-  }
+
+    if (br.hitsLeft <= 0) {
+        br.status = 0;
+        destroyedBricks++;
+        score++;
+        money += Math.floor(br.value * moneyMultiplier);
+        updateMoneyUI();
+        if (Math.random() < powerUpChance) {
+            spawnPowerUp(br.x + 30 - 8, br.y + 10 - 8);
+        }
+        checkLevelComplete();
+    }
 }
+
 
 
 // Check if we finished the level
@@ -1277,6 +1309,29 @@ function updatePowerupUI(){
     }
   }
 }
+
+function checkCollisionWithRect(ball, rx, ry, rw, rh) {
+    let bx1 = ball.x - ball.radius;
+    let bx2 = ball.x + ball.radius;
+    let by1 = ball.y - ball.radius;
+    let by2 = ball.y + ball.radius;
+
+    let rx1 = rx;
+    let rx2 = rx + rw;
+    let ry1 = ry;
+    let ry2 = ry + rh;
+
+    // Check if there is an overlap
+    if (bx2 >= rx1 && bx1 <= rx2 && by2 >= ry1 && by1 <= ry2) {
+        let overlapX = Math.min(bx2 - rx1, rx2 - bx1);
+        let overlapY = Math.min(by2 - ry1, ry2 - by1);
+
+        return overlapX < overlapY ? { axis: "x", amount: overlapX } : { axis: "y", amount: overlapY };
+    }
+    return null;
+}
+
+
 function updateBallPowerUI(){
   document.getElementById("ballPowerDisplay").textContent= "Ball Power: "+ ballPower;
 }
